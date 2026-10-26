@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Timeline</title>
+<style>
+:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+ --ring:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--other:#a8a69e;--band:rgba(42,120,214,.07);--idle:#c3c2b7;
+ --crit:#d03b3b;--warn:#fab219;--good:#0ca30c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;
+ --muted:#898781;--grid:#2c2c2a;--axis:#383835;--ring:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--s3:#199e70;--other:#5d5c57;
+ --band:rgba(57,135,229,.10);--idle:#4a4a46}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;
+ --axis:#383835;--ring:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--s3:#199e70;--other:#5d5c57;--band:rgba(57,135,229,.10);--idle:#4a4a46}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1280px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}
+.sub{color:var(--ink2);margin:0 0 18px;font-size:13px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:12px 14px}
+.tile .k{color:var(--ink2);font-size:12px}.tile .v{font-size:22px;font-weight:600;margin-top:2px}
+.tile .d{color:var(--muted);font-size:12px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:14px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--ink2);font-size:12px;margin-bottom:10px}
+.scroll{overflow-x:auto}
+.wf{--lw:330px;min-width:860px;position:relative}
+.axis,.row{display:grid;grid-template-columns:var(--lw) 1fr;align-items:center}
+.axis{height:24px;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.track{position:relative;height:100%}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
+.tick span{position:absolute;top:4px;left:4px;white-space:nowrap}
+.row{height:22px;border-top:1px solid var(--grid)}
+.row.sec{height:30px}
+.lab{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;color:var(--ink)}
+.lab .m{color:var(--muted);display:inline-block;width:38px;font-size:11px}
+.lab .tag{font-size:10px;color:var(--ink2);border:1px solid var(--ring);border-radius:4px;padding:0 4px;margin-left:6px}
+.bar{position:absolute;top:5px;height:12px;display:flex;gap:1px;min-width:3px;border-radius:0 4px 4px 0;overflow:hidden;cursor:default}
+.bar i{display:block;height:100%;min-width:1px}
+.sap{background:var(--s1)}.cc{background:var(--s2)}.ms{background:var(--s3)}.other{background:var(--other)}
+.overlay{overflow:hidden;position:absolute;top:24px;bottom:0;left:var(--lw);right:0;pointer-events:none}
+.band{position:absolute;top:0;bottom:0;background:var(--band);border-left:1px dashed var(--s1);border-right:1px dashed var(--s1)}
+.win{position:absolute;top:6px;height:18px;border-radius:4px;overflow:hidden;background:repeating-linear-gradient(45deg,var(--idle) 0 2px,transparent 2px 6px);border:1px solid var(--axis);cursor:default}
+.busy{position:absolute;top:0;bottom:0;background:var(--other)}
+.wl{position:absolute;top:7px;font-size:11px;color:var(--ink2);white-space:nowrap;padding-left:6px}
+.mk{position:absolute;top:8px;width:14px;height:14px;margin-left:-7px;border-radius:50%;font:700 10px/14px system-ui;text-align:center;color:#fff;cursor:default;border:2px solid var(--surface)}
+.mk.error{background:var(--crit)}.mk.warn{background:var(--warn);color:#0b0b0b}.mk.app{background:var(--ink2)}
+.mk.read{background:var(--s1)}.mk.sync{background:var(--s3)}.mk.life{background:var(--muted)}
+.ms-line{position:absolute;top:10px;height:10px;border:2px solid var(--ink2);border-top:0;border-radius:0 0 4px 4px}
+.ms-lab{position:absolute;top:-4px;font-size:11px;color:var(--ink);white-space:nowrap;font-weight:600}
+#tip{position:fixed;pointer-events:none;z-index:10;background:var(--surface);color:var(--ink);border:1px solid var(--ring);
+ border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);max-width:420px;display:none}
+#tip b{font-weight:600}#tip .r{display:flex;justify-content:space-between;gap:16px;font-variant-numeric:tabular-nums}
+#tip .u{color:var(--ink2);word-break:break-all;margin-bottom:4px}
+ul.notes{margin:0;padding-left:18px}ul.notes li{margin:4px 0}
+.hatch{background:repeating-linear-gradient(45deg,var(--idle) 0 2px,transparent 2px 6px);border:1px solid var(--axis)}
+.bd-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:10px}
+.bd-head .v{font-size:28px;font-weight:600}.bd-head .d{color:var(--ink2)}
+.stack{display:flex;gap:2px;height:28px;margin:4px 0 14px}
+.stack i{display:block;height:100%;min-width:2px;cursor:default}
+.stack i:first-child{border-radius:4px 0 0 4px}.stack i:last-child{border-radius:0 4px 4px 0}
+.stack.strip{gap:0}.stack.strip i{min-width:1px}
+.bd table{margin-bottom:14px}.bd td.sub{padding-left:28px;color:var(--ink2)}
+.bd tr.tot td{font-weight:600;border-top:2px solid var(--axis)}
+.bd .why{color:var(--ink2);white-space:normal;min-width:240px}
+.bd h3{font-size:14px;margin:6px 0 6px}
+.bd .foot{color:var(--muted);font-size:12px;margin:0}
+.e2e details{margin-bottom:12px}.e2e summary{cursor:pointer;font-weight:600;margin:0 0 8px;color:var(--ink)}
+.kv{display:grid;grid-template-columns:minmax(150px,max-content) 1fr;gap:4px 14px;font-size:13px;margin:0 0 14px}
+.kv dt{color:var(--ink2)}.kv dd{margin:0;word-break:break-all;font-variant-numeric:tabular-nums}
+.kv code,.e2e ol code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--page);border:1px solid var(--ring);border-radius:4px;padding:0 4px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:0 0 14px}
+.facts div{border:1px solid var(--ring);border-radius:8px;padding:8px 10px;background:var(--page)}
+.facts b{display:block;font-size:18px}.facts span{color:var(--ink2);font-size:12px}
+.sl{--lw:190px;min-width:760px;margin:0 0 14px}
+.sl .ln{display:grid;grid-template-columns:var(--lw) 1fr;align-items:center;height:34px;border-top:1px solid var(--grid)}
+.sl .ln .lab{font-size:12px}.sl .tr{position:relative;height:100%;overflow:hidden}
+.sl .b{position:absolute;top:9px;height:16px;display:flex;gap:1px;min-width:3px;border-radius:3px;overflow:hidden;cursor:default}
+.sl .b i{display:block;height:100%;min-width:1px}.sl .b.tg{outline:2px solid var(--ink);outline-offset:1px}
+.sl .g{position:absolute;top:13px;height:8px;cursor:default}
+.sl .mkr{position:absolute;top:4px;bottom:4px;border-left:2px solid var(--ink2)}
+.sl .gl{position:absolute;top:0;font-size:10px;color:var(--ink2);white-space:nowrap;transform:translateX(-50%)}
+.e2e ol{margin:0;padding-left:20px}.e2e ol li{margin:6px 0;line-height:1.5}
+.e2e tr.tg td{font-weight:600}.e2e .why{color:var(--ink2);white-space:normal;min-width:240px}
+.e2e table{margin-bottom:14px}.e2e h3{font-size:14px;margin:6px 0}.e2e .foot{color:var(--muted);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{color:var(--ink2);font-weight:600}td.n,th.n{text-align:right}td.u{white-space:normal;word-break:break-all;min-width:260px}
+details summary{cursor:pointer;color:var(--ink2);margin:6px 0}
+.track{overflow:hidden}.axis .track{overflow:visible}
+.val{position:absolute;top:4px;font-size:10px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.gap{position:absolute;top:9px;font-size:10px;color:var(--ink);text-align:center;white-space:nowrap;pointer-events:none;font-weight:600}
+.zoom{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.zoom button{font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--ring);background:var(--page);color:var(--ink);cursor:pointer}.zoom button.on{background:var(--ink);color:var(--surface)}
+@media (max-width:640px){.wf{--lw:220px}}
+</style></head>
+<body><main>
+<h1 id="title"></h1><p class="sub" id="sub"></p>
+<div class="tiles" id="tiles"></div>
+<h2>What the trace shows</h2><div class="card"><ul class="notes" id="notes"></ul></div>
+<div id="bd"></div>
+<div id="e2e"></div>
+<h2>Timeline</h2>
+<div class="card">
+ <div class="zoom" id="zoom"></div>
+ <div class="legend" id="legend"></div>
+ <div class="scroll"><div class="wf" id="wf"></div></div>
+</div>
+<h2>All calls</h2>
+<div class="card scroll"><table id="tbl"></table></div>
+<details><summary>Device log lines on the timeline</summary><div class="card scroll"><table id="dtbl"></table></div></details>
+</main><div id="tip"></div>
+<script>
+const D = /*__DATA__*/null;
+const DASH = '\u2013';
+const f = ms => ms == null ? DASH : (Math.abs(ms) >= 1000 ? (ms / 1000).toFixed(Math.abs(ms) >= 10000 ? 1 : 2) + ' s' : Math.round(ms) + ' ms');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const KIND = { online: 'online', offline: 'offline server', sync: 'sync protocol', platform: 'platform' };
+const DTYPE = { error: ['!', 'Error'], warn: ['!', 'Warning'], app: ['i', 'App log'], read: ['r', 'Offline-store read'], sync: ['s', 'Sync event'], life: ['L', 'Lifecycle'] };
+
+const t0 = new Date(D.t0);
+const loc = d => d.toLocaleString(undefined, { hour12: false });   // the viewer's local time zone
+document.getElementById('title').textContent = D.title;
+document.getElementById('sub').textContent = 'HAR: ' + D.har + (D.clientLog ? ' \u00b7 client log: ' + D.clientLog : '') +
+  ' \u00b7 start ' + loc(t0) + ' local (' + D.t0.replace('T', ' ').slice(0, 23) + ' UTC)' + (D.deviceInfo ? ' \u00b7 ' + D.deviceInfo : '');
+
+// Tiles
+const S = D.stats, tiles = document.getElementById('tiles');
+const tile = (k, v, d, sw) => { const t = el('div', 'tile'); t.innerHTML = '<div class="k">' + (sw ? '<span class="sw ' + sw + '"></span>' : '') + esc(k) + '</div><div class="v">' + esc(v) + '</div>' + (d ? '<div class="d">' + esc(d) + '</div>' : ''); tiles.appendChild(t); };
+tile('Trace span', f(S.span), S.calls + ' calls, ' + S.odataCalls + ' to SAP');
+tile('SAP backend', f(S.sap), 'sap-perf-fesrec, all OData calls', 'sap');
+tile('Cloud Connector + network', f(S.cc), 'CC hop minus SAP time', 'cc');
+tile('Mobile Services', f(S.mobsvc), 'proxy hop minus CC hop', 'ms');
+tile('Sync protocol + platform', f(S.other), 'MobiLink, sync progress, settings', 'other');
+(D.milestones || []).forEach(m => tile(m.label, f(m.to - m.from), D.breakdown ? D.breakdown.startsAt + ' to last sync call - split below' : 'POST start to last sync call'));
+(D.sync || []).forEach(w => tile('Offline sync #' + w.n, f(w.dur), Math.round(100 * w.idle / Math.max(1, w.dur)) + '% idle (device / network)'));
+
+// Action -> data downloaded: where the time goes
+// (a function so it runs after the tooltip helpers below are defined; called at the end)
+const B = D.breakdown;
+function renderBreakdown() {
+  if (!B) return;
+  const T = B.totals, tot = Math.max(1, B.total), pct = v => Math.round(100 * v / tot) + '%';
+  const idle = T.idle_csrf + T.idle_pre + T.idle_sync;
+  const cats = [
+    ['sap', 'SAP backend', T.sap, 'ABAP processing reported by SAP (sap-perf-fesrec)'],
+    ['cc', 'Cloud Connector + network', T.cc, 'BTP to Cloud Connector to SAP and back'],
+    ['ms', 'Mobile Services (OData calls)', T.ms, 'Proxy, destination and principal propagation around each OData call'],
+    ['other', 'Mobile Services (sync protocol)', T.proto, 'MobiLink and sync-progress calls with no SAP call underneath'],
+    ['hatch', 'Device + network', idle, 'No request at Mobile Services: the device is working, or a request / reply is travelling between device and BTP']];
+  const host = document.getElementById('bd');
+  host.className = 'bd';
+  let h = '<h2>' + esc(B.action) + ' &rarr; data downloaded: where the time goes</h2><div class="card">' +
+    '<div class="bd-head"><span class="v">' + f(B.total) + '</span><span class="d">from the ' + esc(B.startsAt) +
+    ' to the last offline-sync call (' + f(B.from) + ' ' + DASH + ' ' + f(B.to) + ' on the timeline)</span></div>' +
+    '<h3>In time order</h3><div class="stack strip" id="bd-strip"></div>' +
+    '<h3>Added up</h3><div class="stack" id="bd-stack"></div>' +
+    '<h3>By component</h3><div class="scroll"><table><tr><th>Component</th><th class="n">Time</th><th class="n">Share</th><th>What it is</th></tr>';
+  cats.forEach(([cls, name, v, why]) => {
+    h += '<tr><td><span class="sw ' + cls + '"></span>' + name + '</td><td class="n">' + f(v) + '</td><td class="n">' + pct(v) + '</td><td class="why">' + why + '</td></tr>';
+    if (cls === 'hatch') {
+      [['after the CSRF fetch, before the ' + esc(B.action) + ' call', T.idle_csrf], ['after ' + esc(B.action) + ', before the sync reaches Mobile Services', T.idle_pre],
+       ['between the ' + B.trips + ' sync round trips', T.idle_sync]].forEach(([lab, x]) =>
+        h += '<tr><td class="sub">' + lab + '</td><td class="n">' + f(x) + '</td><td class="n">' + pct(x) + '</td><td></td></tr>');
+    }
+  });
+  h += '<tr class="tot"><td>Total</td><td class="n">' + f(B.total) + '</td><td class="n">100%</td><td></td></tr></table></div>';
+  h += '<h3>Step by step</h3><div class="scroll"><table><tr><th>#</th><th>Step</th><th class="n">Starts</th><th class="n">Duration</th><th class="n">Share</th><th>Where the time went</th></tr>';
+  B.steps.forEach((s, i) => {
+    const sw = s.kind === 'idle' ? 'hatch' : (s.kind === 'sync' ? 'other' : 'sap');
+    h += '<tr><td>' + (i + 1) + '</td><td><span class="sw ' + sw + '"></span>' + esc(s.step) + '</td><td class="n">' + f(s.start) +
+      '</td><td class="n">' + f(s.ms) + '</td><td class="n">' + pct(s.ms) + '</td><td class="why">' + esc(s.detail) + '</td></tr>';
+  });
+  h += '</table></div>';
+  if ((B.device || []).length) {
+    h += '<h3>Measured on the device (client log)</h3><div class="scroll"><table><tr><th>Step</th><th class="n">Device</th><th class="n">Mobile Services</th><th class="n">Difference</th><th>Meaning</th></tr>';
+    B.device.forEach(d => h += '<tr><td>' + esc(d.name) + '</td><td class="n">' + (d.approx ? '~' : '') + f(d.ms) + '</td><td class="n">' + f(d.server) +
+      '</td><td class="n">' + (d.server != null ? f(d.ms - d.server) : DASH) + '</td><td class="why">' +
+      (d.server != null ? 'Device to BTP network and device-side work for this step' : '') + '</td></tr>');
+    h += '</table></div>';
+  } else {
+    h += '<p class="foot">To split "Device + network" into device work and network latency, add the client log of the same run, captured at Debug level.</p>';
+  }
+  h += '<p class="foot">Each millisecond goes to the most specific thing running at that moment (SAP, then Cloud Connector, then Mobile Services, then the sync protocol); inside one call the hops are assumed nested evenly, so the per-call totals are exact and the placement is approximate.</p></div>';
+  host.innerHTML = h;
+  const KCLS = { sap: 'sap', cc: 'cc', ms: 'ms', proto: 'other', idle: 'hatch' };
+  const KNAME = Object.fromEntries(cats.map(c => [c[0], c[1]]));
+  const strip = document.getElementById('bd-strip');
+  (B.strip || []).forEach(s => { const cls = KCLS[s.k]; const i = el('i', cls); i.style.flex = s.ms + ' 1 0';
+    hover(i, '<div><b>' + KNAME[cls] + '</b></div>' + r('From', f(s.at)) + r('To', f(s.at + s.ms)) + r('Duration', f(s.ms))); strip.appendChild(i); });
+  const stack = document.getElementById('bd-stack');
+  cats.forEach(([cls, name, v]) => { if (v > 0) { const i = el('i', cls); i.style.flex = v + ' 1 0';
+    hover(i, '<div><b>' + name + '</b></div>' + r('Time', f(v)) + r('Share', pct(v))); stack.appendChild(i); } });
+}
+
+// Notes
+const notes = document.getElementById('notes');
+(D.notes || []).forEach(n => notes.appendChild(el('li', null, esc(n))));
+
+// Legend
+document.getElementById('legend').innerHTML =
+  '<span><span class="sw sap"></span>SAP backend</span><span><span class="sw cc"></span>Cloud Connector + network</span>' +
+  '<span><span class="sw ms"></span>Mobile Services</span><span><span class="sw other"></span>Sync protocol / platform call</span>' +
+  '<span><span class="sw" style="background:repeating-linear-gradient(45deg,var(--idle) 0 2px,transparent 2px 6px);border:1px solid var(--axis)"></span>Sync window idle (device / network)</span>' +
+  '<span style="color:var(--muted)">Bar segments show each part\'s share of the call, not their order.</span>';
+
+// Tooltip
+const tip = document.getElementById('tip');
+const showTip = (e, html) => { tip.innerHTML = html; tip.style.display = 'block'; moveTip(e); };
+const moveTip = e => { const w = tip.offsetWidth, h = tip.offsetHeight; let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14; if (y + h > innerHeight - 8) y = e.clientY - h - 14; tip.style.left = x + 'px'; tip.style.top = y + 'px'; };
+const hideTip = () => tip.style.display = 'none';
+const hover = (node, html) => { node.addEventListener('mouseenter', e => showTip(e, html)); node.addEventListener('mousemove', moveTip); node.addEventListener('mouseleave', hideTip); };
+const r = (k, v) => '<div class="r"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>';
+
+// Waterfall (re-rendered for each zoom range)
+const wf = document.getElementById('wf');
+let V0 = 0, V1 = D.stats.span;
+const X = ms => (100 * (ms - V0) / (V1 - V0)) + '%';
+const W = ms => (100 * ms / (V1 - V0)) + '%';
+const inView = (a, b) => b >= V0 && a <= V1;
+const steps = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 30000, 60000, 120000, 300000];
+
+function render() {
+  wf.innerHTML = '';
+  const span = V1 - V0, step = steps.find(s => span / s <= 12) || 600000;
+  const axis = el('div', 'axis'); axis.appendChild(el('div', 'lab', '<span style="color:var(--muted)">seconds from trace start</span>'));
+  const at = el('div', 'track');
+  for (let s = Math.ceil(V0 / step) * step; s <= V1; s += step) { const t = el('div', 'tick', '<span>' + (s / 1000) + ' s</span>'); t.style.left = X(s); at.appendChild(t); }
+  axis.appendChild(at); wf.appendChild(axis);
+
+  const overlay = el('div', 'overlay');
+  (D.sync || []).filter(w => inView(w.start, w.end)).forEach(w => { const b = el('div', 'band'); b.style.left = X(w.start); b.style.width = W(w.end - w.start); overlay.appendChild(b); });
+  wf.appendChild(overlay);
+
+  const addRow = (labHtml, cls) => { const row = el('div', 'row' + (cls ? ' ' + cls : '')); row.appendChild(el('div', 'lab', labHtml)); const tr = el('div', 'track'); row.appendChild(tr); wf.appendChild(row); return tr; };
+
+  if (D.clientLog) {
+    const tr = addRow('<b>Device</b> <span class="tag">client log</span>', 'sec');
+    const dev = (D.device || []).filter(d => inView(d.at, d.at));
+    dev.forEach(d => { const [g, name] = DTYPE[d.type]; const m = el('div', 'mk ' + d.type, g); m.style.left = X(d.at);
+      hover(m, '<div><b>' + name + '</b> \u00b7 ' + f(d.at) + ' (device ' + esc(d.dev) + ')</div><div class="u">' + esc(d.src) + '</div>' + esc(d.msg)); tr.appendChild(m); });
+    if (!dev.length) tr.appendChild(el('div', 'wl', 'no client-log lines in this range'));
+  }
+
+  const tr = addRow('<b>Offline sync windows</b>', 'sec');
+  (D.sync || []).filter(w => inView(w.start, w.end)).forEach(w => {
+    const box = el('div', 'win'); box.style.left = X(w.start); box.style.width = W(w.end - w.start);
+    (D.rows || []).filter(c => (c.kind === 'sync' || c.kind === 'offline') && c.start >= w.start && c.start <= w.end).forEach(c => {
+      const b = el('div', 'busy'); b.style.left = (100 * (c.start - w.start) / Math.max(1, w.dur)) + '%'; b.style.width = (100 * c.dur / Math.max(1, w.dur)) + '%'; box.appendChild(b); });
+    let gl = ''; (w.gaps || []).forEach(g => gl += r(f(g.from) + ' ' + DASH + ' ' + f(g.to), f(g.to - g.from) + ' idle'));
+    hover(box, '<div><b>Offline sync #' + w.n + '</b></div>' + r('Wall clock', f(w.dur)) + r('Mobile Services busy', f(w.busy)) + r('Idle (device / network)', f(w.idle)) +
+      r('SAP time', f(w.sap)) + r('Calls', w.calls) + '<div class="u" style="margin-top:4px">' + esc(w.reads) + '</div>' + (gl ? '<div style="margin-top:4px;color:var(--ink2)">Idle gaps</div>' + gl : ''));
+    tr.appendChild(box);
+    // Label each idle gap when the zoom leaves room for it.
+    const px = tr.getBoundingClientRect().width || 800;
+    (w.gaps || []).forEach(g => { if ((g.to - g.from) / span * px > 46) { const gl2 = el('div', 'gap', f(g.to - g.from)); gl2.style.left = X(g.from); gl2.style.width = W(g.to - g.from); tr.appendChild(gl2); } });
+    const l = el('div', 'wl', '#' + w.n + ' ' + f(w.dur)); l.style.left = X(w.end); tr.appendChild(l);
+  });
+  (D.milestones || []).filter(m => inView(m.from, m.to)).forEach(m => { const ln = el('div', 'ms-line'); ln.style.left = X(m.from); ln.style.width = W(m.to - m.from); tr.appendChild(ln); });
+
+  (D.rows || []).filter(c => inView(c.start, c.start + c.dur)).forEach(c => {
+    const short = c.url.length > 60 ? c.url.slice(0, 60) + '\u2026' : c.url;
+    const tr = addRow('<span class="m">' + esc(c.method) + '</span>' + esc(short) + '<span class="tag">' + KIND[c.kind] + '</span>');
+    const bar = el('div', 'bar'); bar.style.left = X(c.start); bar.style.width = W(c.dur);
+    const seg = (cls, v) => { if (v > 0) { const i = el('i', cls); i.style.flex = v + ' 1 0'; bar.appendChild(i); } };
+    if (c.sap != null) { seg('ms', c.ms != null ? c.ms : (c.inner != null ? c.dur - c.inner : c.dur - c.sap)); seg('cc', c.cc); seg('sap', c.sap); }
+    else seg('other', c.dur);
+    hover(bar, '<div class="u">' + esc(c.method + ' ' + c.url) + '</div>' + r('Start', f(c.start)) + r('Total (Mobile Services view)', f(c.dur)) +
+      (c.sap != null ? r('SAP backend', f(c.sap)) + r('Cloud Connector + network', f(c.cc)) + r('Mobile Services', f(c.ms)) : '') +
+      r('HTTP status', c.status) + r('Hops', c.hops) + r('Kind', KIND[c.kind]) + (c.bytes ? r('Response bytes', c.bytes) : ''));
+    tr.appendChild(bar);
+    if ((c.dur / span) * (tr.getBoundingClientRect().width || 800) > 4) { const v = el('div', 'val', f(c.dur)); v.style.left = 'calc(' + X(c.start + c.dur) + ' + 4px)'; tr.appendChild(v); }
+  });
+}
+
+// Zoom buttons: whole trace, action milestone, each sync window (with a little margin).
+const zoom = document.getElementById('zoom');
+const ranges = [['Whole trace', 0, D.stats.span]];
+(D.milestones || []).forEach(m => ranges.push([m.label, m.from, m.to]));
+(D.sync || []).forEach(w => ranges.push(['Sync #' + w.n, w.start, w.end]));
+ranges.forEach(([label, a, b], i) => {
+  const btn = el('button', i ? '' : 'on', esc(label));
+  btn.onclick = () => { const pad = i ? Math.max(150, (b - a) * 0.06) : 0; V0 = Math.max(0, a - pad); V1 = Math.min(D.stats.span, b + pad);
+    zoom.querySelectorAll('button').forEach(x => x.classList.remove('on')); btn.classList.add('on'); render(); };
+  zoom.appendChild(btn);
+});
+render();
+renderBreakdown();
+
+// End to end: offline downloads, linked by correlation ID, sync operation ID and SAP Passport
+function renderE2E() {
+  const list = D.e2e || [];
+  if (!list.length) return;
+  const host = document.getElementById('e2e'); host.className = 'e2e';
+  let h = '<h2>End to end: offline download</h2><div class="card">' +
+    '<p class="foot" style="margin-bottom:10px">Each followed offline read (<code>' + [...new Set(list.map(e => esc(e.url)))].join('</code>, <code>') + '</code>) traced from the device to SAP and back. ' +
+    'The offline server\'s SAP reads carry the correlation ID of the device\'s MobiLink request; every MobiLink request and sync-progress poll carries the sync operation ID; ' +
+    'every hop carries the same SAP Passport transaction ID, which the ABAP server records too.</p>';
+  list.forEach((e, n) => {
+    const p = e.payload || {}, kb = b => b == null ? DASH : (b >= 1024 ? (b / 1024).toFixed(1) + ' KB' : b + ' B');
+    const nav = Object.entries(p.nav || {}).map(([k, v]) => v + ' ' + k.replace(/^_/, '')).join(', ');
+    const when = new Date(e.startUtc);
+    h += '<details' + (n ? '' : ' open') + '><summary>' + (e.afterAction ? 'Download after ' + esc(D.action) : 'Download of ' + esc(e.entity)) + ' at ' + f(e.call.start) +
+      ' on the timeline \u00b7 ' + f(e.total) + (e.afterAction ? ' from the ' + esc(D.action) + ' reply' : '') + '</summary>';
+    h += '<div class="facts">' +
+      '<div><b>' + f(e.total) + '</b><span>' + (e.afterAction ? esc(D.action) + ' reply to last MobiLink request' : 'sync session') + '</span></div>' +
+      '<div><b>' + f(e.deviceGapMs) + '</b><span>device + network: no device request open (' + Math.round(100 * e.deviceGapMs / Math.max(1, e.total)) + '%)</span></div>' +
+      '<div><b>' + f(e.deviceRequestMs) + '</b><span>' + e.deviceRequests + ' device requests at Mobile Services</span></div>' +
+      '<div><b>' + f(e.serverMs) + '</b><span>' + e.serverCalls + ' offline-server reads from SAP (SAP ' + f(e.serverSap) + ')</span></div>' +
+      '<div><b>' + f(e.call.sap) + '</b><span>SAP time for the ' + esc(e.entity) + ' read (of ' + f(e.call.dur) + ')</span></div>' +
+      '<div><b>' + kb(p.jsonBytes) + '</b><span>JSON (' + kb(p.wireBytes) + (p.encoding ? ' ' + esc(p.encoding) : '') + ' on the wire)' + (nav ? ': ' + p.rows + ' rows, ' + esc(nav) : (p.rows != null ? ': ' + p.rows + ' rows' : '')) + '</span></div>' +
+      '</div>';
+    // Swimlane
+    const span = Math.max(1, e.to - e.from), XL = ms => (100 * (ms - e.from) / span) + '%', WL = ms => (100 * ms / span) + '%';
+    h += '<div class="scroll"><div class="sl" id="sl' + n + '">' +
+      '<div class="ln"><div class="lab"><b>Device \u2194 Mobile Services</b></div><div class="tr" data-lane="device"></div></div>' +
+      '<div class="ln"><div class="lab"><b>Offline server \u2192 SAP</b></div><div class="tr" data-lane="server"></div></div>' +
+      '<div class="ln" style="height:22px"><div class="lab" style="color:var(--muted)">' + f(span) + ' shown</div><div class="tr" data-lane="axis"></div></div></div></div>';
+    // Facts for tracing
+    h += '<dl class="kv">' +
+      '<dt>SAP request</dt><dd><code>GET ' + esc(e.backendPath) + '</code></dd>' +
+      '<dt>Started</dt><dd>' + esc(e.startUtc.replace('T', ' ').slice(0, 23)) + ' UTC (' + loc(when) + ' local)</dd>' +
+      '<dt>SAP Passport transaction ID</dt><dd><code>' + esc(e.transId || DASH) + '</code> \u00b7 hops: ' + esc((e.passportChain || []).join(' \u2192 ')) + '</dd>' +
+      '<dt>Correlation ID</dt><dd><code>' + esc(e.corr || DASH) + '</code></dd>' +
+      '<dt>Sync operation ID</dt><dd><code>' + esc(e.operationId || DASH) + '</code>' + (e.mlSession ? ' \u00b7 MobiLink session <code>' + esc(e.mlSession) + '</code>' : '') + '</dd>' +
+      '<dt>End user</dt><dd>' + esc(e.endUser || DASH) + ' \u00b7 Cloud Connector location ' + esc(e.sccLocation || DASH) + '</dd>' +
+      '<dt>Delta</dt><dd>' + (p.prefer ? 'Requested (<code>Prefer: ' + esc(p.prefer) + '</code>), ' : '') +
+        (p.deltaLink ? 'delta link returned' : 'no delta link returned - every download reads the data in full') + '</dd>' +
+      '</dl>';
+    // Steps
+    h += '<h3>Step by step</h3><div class="scroll"><table><tr><th>#</th><th class="n">At</th><th class="n">Device + network before</th><th class="n">Duration</th><th>Step</th><th>Details</th></tr>';
+    e.steps.forEach((s, i) => {
+      h += '<tr' + (s.target ? ' class="tg"' : '') + '><td>' + (i + 1) + '</td><td class="n">+' + f(s.at - e.from) + '</td><td class="n">' + (s.gap != null ? f(s.gap) : '') +
+        '</td><td class="n">' + (s.lane === 'marker' ? '' : f(s.dur)) + '</td><td>' + esc(s.label) + '</td><td class="why">' + esc(s.detail) + '</td></tr>';
+    });
+    h += '</table></div>';
+    // SAP-side
+    const replay = e.backendPath + (e.backendPath.indexOf('?') < 0 ? '?' : '&') + 'sap-statistics=true';
+    h += '<h3>Trace it inside SAP</h3><ol>' +
+      '<li><b>STAD</b> - user: the SAP user mapped from <code>' + esc(e.endUser || '?') + '</code> (certificate rule); time ' + esc(e.startUtc.slice(11, 19)) + ' UTC, converted to the SAP server time zone; task type HTTP. Pick the step for <code>' + esc(e.entity) + '</code>: its response time should be close to ' + f(e.fesrec) +
+        '; the record\'s passport data should show transaction ID <code>' + esc(e.transId || '?') + '</code>.</li>' +
+      '<li><b>/IWFND/GW_CLIENT</b> - replay <code>GET ' + esc(replay) + '</code> as the same user (Switch User) and read the <code>sap-statistics</code> header: gwapp = RAP / CDS, gwfw = Gateway framework.</li>' +
+      '<li><b>SAT</b> - schedule a trace for that user, process type HTTP, then repeat the same step on the device: the ABAP call tree of this request.</li>' +
+      '<li><b>ST05</b> - SQL trace (with buffer trace) filtered on that user while repeating: which CDS views and statements make up the SAP time.</li>' +
+      '<li><b>Mobile Services / BTP</b> - quote correlation ID <code>' + esc(e.corr || '?') + '</code> and operation ID <code>' + esc(e.operationId || '?') + '</code> in the Mobile Services logs or to SAP support.</li>' +
+      '</ol></details>';
+  });
+  host.innerHTML = h + '</div>';
+
+  // Draw the swimlanes now that the containers exist.
+  list.forEach((e, n) => {
+    const root = document.getElementById('sl' + n); if (!root) return;
+    const span = Math.max(1, e.to - e.from), XL = ms => (100 * (ms - e.from) / span) + '%', WL = ms => (100 * ms / span) + '%';
+    const dev = root.querySelector('[data-lane="device"]'), srv = root.querySelector('[data-lane="server"]'), ax = root.querySelector('[data-lane="axis"]');
+    const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]; const st = steps.find(s => span / s <= 10) || 10000;
+    for (let t = 0; t <= span; t += st) { const g = el('div', 'gl', f(t)); g.style.left = XL(e.from + t); g.style.top = '4px'; ax.appendChild(g); }
+    let devEnd = e.from;
+    e.steps.forEach(s => {
+      if (s.lane === 'marker') { const m = el('div', 'mkr'); m.style.left = XL(s.at); hover(m, '<b>' + esc(s.label) + '</b><div>' + esc(s.detail) + '</div>'); dev.appendChild(m); return; }
+      if (s.lane === 'device') {
+        if (s.gap > 0) { const g = el('div', 'g hatch'); g.style.left = XL(s.at - s.gap); g.style.width = WL(s.gap);
+          hover(g, '<b>Device + network</b>' + r('No device request open', f(s.gap)) + '<div class="u">Device working (app, offline store) or data in transit device \u2194 BTP</div>'); dev.appendChild(g);
+          if (s.gap / span > 0.06) { const l = el('div', 'gl', f(s.gap)); l.style.left = XL(s.at - s.gap / 2); dev.appendChild(l); } }
+        const b = el('div', 'b'); b.style.left = XL(s.at); b.style.width = WL(s.dur); const i = el('i', 'other'); i.style.flex = '1'; b.appendChild(i);
+        hover(b, '<b>' + esc(s.label) + '</b>' + r('At', '+' + f(s.at - e.from)) + r('Duration', f(s.dur)) + r('HTTP', s.status) + '<div class="u">' + esc(s.detail) + '</div>'); dev.appendChild(b);
+        devEnd = Math.max(devEnd, s.at + s.dur);
+      } else {
+        const b = el('div', 'b' + (s.target ? ' tg' : '')); b.style.left = XL(s.at); b.style.width = WL(s.dur);
+        const seg = (cls, v) => { if (v > 0) { const i = el('i', cls); i.style.flex = v + ' 1 0'; b.appendChild(i); } };
+        seg('ms', s.ms); seg('cc', s.cc); seg('sap', s.sap);
+        hover(b, '<b>' + esc(s.label) + '</b>' + r('At', '+' + f(s.at - e.from)) + r('Total', f(s.dur)) + r('SAP', f(s.sap)) + r('Cloud Connector + network', f(s.cc)) + r('Mobile Services', f(s.ms)) + (s.target ? '<div class="u">The followed read</div>' : ''));
+        srv.appendChild(b);
+      }
+    });
+  });
+}
+renderE2E();
+
+// Tables
+const tbl = document.getElementById('tbl');
+tbl.innerHTML = '<tr><th class="n">Start</th><th>Kind</th><th>Method</th><th class="n">Status</th><th class="n">Total</th><th class="n">SAP</th><th class="n">CC + net</th><th class="n">Mob. Svc</th><th class="n">Bytes</th><th>URL</th></tr>' +
+  (D.rows || []).map(c => '<tr><td class="n">' + f(c.start) + '</td><td>' + KIND[c.kind] + '</td><td>' + esc(c.method) + '</td><td class="n">' + c.status + '</td><td class="n">' + f(c.dur) +
+    '</td><td class="n">' + f(c.sap) + '</td><td class="n">' + f(c.cc) + '</td><td class="n">' + f(c.ms) + '</td><td class="n">' + (c.bytes || '') + '</td><td class="u">' + esc(c.url) + '</td></tr>').join('');
+const dt = document.getElementById('dtbl');
+dt.innerHTML = '<tr><th class="n">At</th><th>Device time</th><th>Type</th><th>Source</th><th>Message</th></tr>' +
+  (D.device || []).map(d => '<tr><td class="n">' + f(d.at) + '</td><td>' + esc(d.dev) + '</td><td>' + DTYPE[d.type][1] + '</td><td>' + esc(d.src) + '</td><td class="u">' + esc(d.msg) + '</td></tr>').join('');
+</script></body></html>

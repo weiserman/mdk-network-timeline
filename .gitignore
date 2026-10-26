@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+plash.env
+data/
+.sesskey
+*.har
+clientlogs*.json
+timeline*.html
+!timeline_template.html
